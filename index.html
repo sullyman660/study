@@ -1,328 +1,239 @@
-<!DOCTYPE html>                 <!-- 声明这是一个HTML5文档 -->
-<html lang="zh-CN">                <!-- 网页根元素，lang="zh-CN" 表示中文网页 -->
-<head>                             <!-- 头部区域：放网页的元信息，不显示在页面上 -->
-    <meta charset="UTF-8">         <!-- 字符编码设为UTF-8，防止中文乱码 -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">  <!-- 让手机也能正常显示 -->
-    <title>贪吃蛇</title>           <!-- 浏览器标签页上显示的标题 -->
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js">  <!-- 加载Phaser游戏框架 -->
-    </script>
-    <style>                        <!-- CSS样式：控制网页外观 -->
-        * {                        /* 通配符：选中页面所有元素 */
-            margin: 0;             /* 外边距清零 */
-            padding: 0;            /* 内边距清零 */
-            box-sizing: border-box; /* 宽高计算包含边框，布局更直观 */
-        }
-        body {                     /* 页面主体 */
-            background: #1a1a2e;   /* 深色背景 */
-            display: flex;         /* 弹性布局 */
-            justify-content: center; /* 水平居中 */
-            align-items: center;   /* 垂直居中 */
-            height: 100vh;         /* 高度占满整个屏幕 */
-            font-family: 'Arial', sans-serif; /* 字体 */
-            overflow: hidden;      /* 隐藏滚动条 */
-        }
-        #game-container {          /* 游戏画布的外框 */
-            border: 3px solid #0f3460;  /* 蓝色边框 */
-            border-radius: 8px;    /* 圆角 */
-            box-shadow: 0 0 30px rgba(83, 52, 230, 0.3); /* 紫色发光阴影 */
-        }
-        #game-container canvas {   /* 游戏画布本身 */
-            display: block;        /* 块级元素，消除下方空隙 */
-            border-radius: 5px;    /* 小圆角 */
-        }
-    </style>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>篝火：被遗忘的土地 - The Bonfire: Forsaken Lands</title>
+    <link rel="stylesheet" href="css/style.css">
 </head>
-<body>                             <!-- 页面主体：显示在屏幕上的内容 -->
-    <div id="game-container"></div> <!-- 游戏容器，Phaser会把画布塞到这里 -->
+<body>
+    <div id="game-container">
+        <!-- 开场剧情 -->
+        <div id="prologue" class="prologue-overlay">
+            <div class="prologue-content">
+                <h1>🔥 篝火：被遗忘的土地</h1>
+                <div class="prologue-text">
+                    <p class="story-line active">「当星辰陨落，大海将吞噬一切……」</p>
+                    <p class="story-line">「沉睡的远古之神即将苏醒，唯有点燃篝火，才能召唤迷失的灵魂。」</p>
+                    <p class="story-line">「你，最后的守望者，流落至这片被遗忘的雪原。」</p>
+                    <p class="story-line">「点燃篝火，召集同伴，抵御黑夜中的邪祟……」</p>
+                    <p class="story-line">「寻找远古泰坦之力，方能阻止末日的降临。」</p>
+                </div>
+                <button id="btn-start-game" class="prologue-btn">点燃篝火</button>
+            </div>
+        </div>
 
-    <script>                       <!-- JavaScript代码：游戏逻辑 -->
-        // ==================== 游戏配置参数（改这里可以调整游戏） ====================
-        const CELL_SIZE = 20;      // 每个格子的像素大小（20px）
-        const GRID_WIDTH = 25;     // 网格宽度：25格 → 500px宽
-        const GRID_HEIGHT = 25;    // 网格高度：25格 → 500px高
-        const MOVE_INTERVAL = 130; // 蛇每隔130毫秒移动一次（改小=更快，改大=更慢）
+        <!-- 顶部信息栏 -->
+        <div id="top-bar">
+            <div class="info-item">
+                <span class="label">第</span>
+                <span id="day-display" class="value">1</span>
+                <span class="label">天</span>
+            </div>
+            <div class="info-item">
+                <span id="time-display" class="value">06:00</span>
+            </div>
+            <div class="info-item">
+                <span class="icon sun" id="daynight-icon">☀</span>
+                <span id="daynight-text">白天</span>
+            </div>
+        </div>
 
-        // ==================== 颜色配置（统一管理所有颜色，方便换皮肤） ====================
-        const COLORS = {
-            background: 0x16213e,  // 背景色：深蓝
-            grid: 0x1a1a3e,        // 网格底色
-            gridLine: 0x0f3460,    // 网格线颜色
-            snakeHead: 0x00ff88,   // 蛇头：亮绿色
-            snakeBody: 0x00cc66,   // 蛇身：绿色
-            snakeTail: 0x009944,   // 蛇尾：深绿色
-            food: 0xff4444,        // 食物：红色
-            foodGlow: 0xff6666,    // 食物光晕：浅红色
-            score: '#ffffff',      // 分数文字：白色
-            gameOver: '#ff4444',   // 游戏结束文字：红色
-            restart: '#aaaaaa',    // 重新开始提示：灰色
-        };
+        <!-- 游戏主画面 -->
+        <canvas id="game-canvas" width="800" height="450"></canvas>
 
-        // ==================== 游戏场景：所有游戏逻辑都在这里 ====================
-        class SnakeScene extends Phaser.Scene {  // 继承Phaser的"场景"类
-            constructor() {                      // 构造函数：创建场景时自动调用
-                super({ key: 'SnakeScene' });    // 给场景起个名字叫"SnakeScene"
-            }
+        <!-- 资源栏 -->
+        <div id="resource-bar">
+            <div class="resource-item">
+                <span class="resource-icon">🪵</span>
+                <span class="resource-name">木材</span>
+                <span id="wood-count" class="resource-value">0</span>
+            </div>
+            <div class="resource-item">
+                <span class="resource-icon">🍖</span>
+                <span class="resource-name">食物</span>
+                <span id="food-count" class="resource-value">0</span>
+            </div>
+            <div class="resource-item">
+                <span class="resource-icon">👥</span>
+                <span class="resource-name">工人</span>
+                <span id="worker-count" class="resource-value">1</span>
+            </div>
+            <div class="resource-item" style="cursor:pointer;" id="btn-mute" title="切换音效">
+                <span class="resource-icon" id="mute-icon">🔊</span>
+                <span class="resource-name">音效</span>
+            </div>
+        </div>
 
-            create() {                           // 游戏开始时自动调用一次（初始化）
-                // --- 蛇的数据 ---
-                // 蛇是一个数组，第0个是头，最后一个是尾
-                this.snake = [
-                    { x: 12, y: 12 },           // 蛇头：第12列第12行
-                    { x: 11, y: 12 },           // 身体：第11列第12行
-                    { x: 10, y: 12 },           // 尾巴：第10列第12行
-                ];
-                // --- 方向 ---
-                this.direction = { x: 1, y: 0 };     // 当前移动方向：x=1向右，y=0不上下移动
-                this.nextDirection = { x: 1, y: 0 };  // 玩家输入的下一个方向
-                // --- 食物 ---
-                this.food = this.spawnFood();         // 随机生成第一个食物
-                // --- 分数 ---
-                this.score = 0;                       // 初始分数为0
-                this.isGameOver = false;              // 游戏没有结束
-                this.moveTimer = 0;                   // 移动计时器归零
+        <!-- 底部操作栏 -->
+        <div id="bottom-bar">
+            <button id="btn-build" class="game-btn">建造</button>
+            <button id="btn-workers" class="game-btn">工人</button>
+            <button id="btn-craft" class="game-btn">制作</button>
+            <button id="btn-explore" class="game-btn">探索</button>
+            <button id="btn-save" class="game-btn" style="background-color: #228B22;">💾 存档</button>
+        </div>
 
-                // --- 画布 ---
-                this.graphics = this.add.graphics();  // 创建一个"画笔"对象
-                this.drawGrid();                      // 画出背景网格
+        <!-- 玩法提示 -->
+        <div id="game-tips" style="padding: 8px 16px; background-color: #1a1a2e; font-size: 11px; color: #aaa; text-align: center; border-top: 1px solid #0f3460;">
+            按住鼠标拖拽移动僧侣 | 白天采集建造，夜晚抵御怪物 | Ctrl+S 快速存档 | ESC 关闭面板
+        </div>
 
-                // --- 分数文字（显示在画布顶部） ---
-                this.scoreText = this.add.text(       // 创建一个文字对象
-                    GRID_WIDTH * CELL_SIZE / 2, 12,   // 位置：水平居中，距顶部12px
-                    '分数: 0',                        // 初始显示文字
-                    {                                 // 文字样式
-                        fontSize: '20px',             // 字号20像素
-                        fontFamily: 'Arial',          // 字体Arial
-                        color: COLORS.score,          // 白色
-                        fontStyle: 'bold',            // 加粗
-                    }
-                ).setOrigin(0.5, 0).setDepth(10);     // 锚点居中，层级最高
+        <!-- 建造菜单面板 -->
+        <div id="build-panel" class="panel hidden">
+            <div class="panel-header">
+                <h3>建造</h3>
+                <button class="close-btn">×</button>
+            </div>
+            <div class="panel-content">
+                <div class="build-item" data-type="tent">
+                    <span class="build-name">帐篷</span>
+                    <span class="build-cost">🪵 10</span>
+                    <span class="build-desc">为1个工人提供住所</span>
+                    <button class="build-btn">建造</button>
+                </div>
+                <div class="build-item" data-type="farm">
+                    <span class="build-name">农场</span>
+                    <span class="build-cost">🪵 15</span>
+                    <span class="build-desc">自动生产食物</span>
+                    <button class="build-btn">建造</button>
+                </div>
+                <div class="build-item" data-type="wall">
+                    <span class="build-name">木墙</span>
+                    <span class="build-cost">🪵 20</span>
+                    <span class="build-desc">防御怪物攻击</span>
+                    <button class="build-btn">建造</button>
+                </div>
+                <div class="build-item" data-type="watchtower">
+                    <span class="build-name">瞭望塔</span>
+                    <span class="build-cost">🪵 30 | 🍖 5</span>
+                    <span class="build-desc">提前发现敌人，增加守卫视野</span>
+                    <button class="build-btn">建造</button>
+                </div>
+                <div class="build-item" data-type="workshop">
+                    <span class="build-name">工坊</span>
+                    <span class="build-cost">🪵 40 | 🍖 10</span>
+                    <span class="build-desc">解锁高级制作</span>
+                    <button class="build-btn">建造</button>
+                </div>
+                <div class="build-item" data-type="shipyard">
+                    <span class="build-name">船坞</span>
+                    <span class="build-cost">🪵 50 | 🍖 20</span>
+                    <span class="build-desc">建造船只探索新大陆</span>
+                    <button class="build-btn">建造</button>
+                </div>
+            </div>
+        </div>
 
-                // --- 游戏结束文字（初始隐藏） ---
-                this.gameOverText = this.add.text(
-                    GRID_WIDTH * CELL_SIZE / 2,              // 水平居中
-                    GRID_HEIGHT * CELL_SIZE / 2 - 20,        // 垂直居中偏上20px
-                    '游戏结束!',
-                    {
-                        fontSize: '36px',
-                        fontFamily: 'Arial',
-                        color: COLORS.gameOver,
-                        fontStyle: 'bold',
-                    }
-                ).setOrigin(0.5).setDepth(10).setVisible(false);  // 初始不可见
+        <!-- 工人管理面板 -->
+        <div id="workers-panel" class="panel hidden">
+            <div class="panel-header">
+                <h3>工人管理</h3>
+                <button class="close-btn">×</button>
+            </div>
+            <div class="panel-content">
+                <div id="workers-list"></div>
+                <div class="worker-assign">
+                    <h4>分配新工人</h4>
+                    <button class="assign-btn" data-job="logger">伐木工</button>
+                    <button class="assign-btn" data-job="hunter">猎人</button>
+                    <button class="assign-btn" data-job="guard">守卫</button>
+                    <button class="assign-btn" data-job="farmer">农民</button>
+                </div>
+            </div>
+        </div>
 
-                // --- 重新开始提示（初始隐藏） ---
-                this.restartText = this.add.text(
-                    GRID_WIDTH * CELL_SIZE / 2,              // 水平居中
-                    GRID_HEIGHT * CELL_SIZE / 2 + 25,        // 垂直居中偏下25px
-                    '按 空格键 重新开始',
-                    {
-                        fontSize: '16px',
-                        fontFamily: 'Arial',
-                        color: COLORS.restart,
-                    }
-                ).setOrigin(0.5).setDepth(10).setVisible(false);  // 初始不可见
+        <!-- 制作面板 -->
+        <div id="craft-panel" class="panel hidden">
+            <div class="panel-header">
+                <h3>制作</h3>
+                <button class="close-btn">×</button>
+            </div>
+            <div class="panel-content" id="craft-list">
+                <div class="craft-item" data-item="bow">
+                    <span class="craft-name">🏹 弓</span>
+                    <span class="craft-cost">🪵 20 | 🍖 5</span>
+                    <span class="craft-desc">让守卫可以远程攻击</span>
+                    <button class="craft-btn">制作</button>
+                </div>
+                <div class="craft-item" data-item="sword">
+                    <span class="craft-name">⚔️ 铁剑</span>
+                    <span class="craft-cost">🪵 15 | 🍖 10</span>
+                    <span class="craft-desc">大幅提升守卫攻击力</span>
+                    <button class="craft-btn">制作</button>
+                </div>
+                <div class="craft-item" data-item="armor">
+                    <span class="craft-name">🛡️ 皮甲</span>
+                    <span class="craft-cost">🪵 25 | 🍖 15</span>
+                    <span class="craft-desc">减少工人受到的伤害</span>
+                    <button class="craft-btn">制作</button>
+                </div>
+                <div class="craft-item" data-item="torch">
+                    <span class="craft-name">🔥 火把</span>
+                    <span class="craft-cost">🪵 5</span>
+                    <span class="craft-desc">增加夜晚视野范围</span>
+                    <button class="craft-btn">制作</button>
+                </div>
+                <div class="craft-item" data-item="boat">
+                    <span class="craft-name">🚢 小船</span>
+                    <span class="craft-cost">🪵 50 | 🍖 20</span>
+                    <span class="craft-desc">解锁探索新大陆</span>
+                    <button class="craft-btn">制作</button>
+                </div>
+            </div>
+        </div>
 
-                // --- 键盘：注册各个按键 ---
-                this.cursors = this.input.keyboard.createCursorKeys();  // 方向键 ↑↓←→
-                this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);  // 空格键
-                this.wKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);  // W键
-                this.aKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);  // A键
-                this.sKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);  // S键
-                this.dKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);  // D键
-            }
+        <!-- 探索面板 -->
+        <div id="explore-panel" class="panel hidden">
+            <div class="panel-header">
+                <h3>探索</h3>
+                <button class="close-btn">×</button>
+            </div>
+            <div class="panel-content">
+                <div class="explore-section">
+                    <h4>🗺️ 世界地图</h4>
+                    <div id="world-map">
+                        <div class="map-region discovered" data-region="camp">🏕️ 营地</div>
+                        <div class="map-region" data-region="forest">🌲 迷雾森林</div>
+                        <div class="map-region" data-region="mountain">🏔️ 雪山</div>
+                        <div class="map-region" data-region="dungeon">💀 古代地下城</div>
+                        <div class="map-region" data-region="shore">🏖️ 海岸</div>
+                        <div class="map-region" data-region="newland">🌅 新大陆</div>
+                    </div>
+                </div>
+                <div class="explore-section">
+                    <h4>🧭 派遣侦察</h4>
+                    <p class="explore-hint">选择区域派遣侦察兵探索</p>
+                    <button id="btn-scout" class="game-btn" disabled>派遣侦察兵</button>
+                    <div id="explore-log"></div>
+                </div>
+            </div>
+        </div>
 
-            update(time, delta) {                    // 每帧自动调用（约60次/秒）
-                if (this.isGameOver) {               // 如果游戏已经结束
-                    if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {  // 检测空格键是否刚按下
-                        this.scene.restart();        // 重新开始场景
-                    }
-                    return;                          // 游戏结束，不再移动蛇
-                }
+        <!-- 事件弹窗 -->
+        <div id="event-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3 id="event-title">事件标题</h3>
+                <p id="event-desc">事件描述...</p>
+                <div id="event-choices"></div>
+            </div>
+        </div>
 
-                this.handleInput();                  // 读取玩家按键，更新方向
+        <!-- 任务指引面板 -->
+        <div id="quest-panel" class="quest-bar hidden">
+            <div class="quest-icon">📜</div>
+            <div class="quest-info">
+                <span class="quest-title" id="quest-title">初来乍到</span>
+                <span class="quest-desc" id="quest-desc">点燃篝火，收集木材与食物，生存下去</span>
+            </div>
+        </div>
 
-                this.moveTimer += delta;             // 累加计时器（delta = 距上一帧的毫秒数）
-                if (this.moveTimer >= MOVE_INTERVAL) {  // 如果累计时间达到移动间隔
-                    this.moveTimer = 0;              // 计时器归零
-                    this.moveSnake();                // 让蛇移动一步
-                }
-            }
+        <!-- 游戏消息提示 -->
+        <div id="message-box"></div>
+    </div>
 
-            handleInput() {                          // 处理玩家按键输入
-                const d = this.direction;            // 获取当前蛇的移动方向
-
-                // 按上键或W：如果蛇当前不是向下走，就改为向上
-                if ((this.cursors.up.isDown || this.wKey.isDown) && d.y !== 1) {
-                    this.nextDirection = { x: 0, y: -1 };  // x不变，y=-1 → 向上
-                }
-                // 按下键或S：如果蛇当前不是向上走，就改为向下
-                if ((this.cursors.down.isDown || this.sKey.isDown) && d.y !== -1) {
-                    this.nextDirection = { x: 0, y: 1 };   // x不变，y=1 → 向下
-                }
-                // 按左键或A：如果蛇当前不是向右走，就改为向左
-                if ((this.cursors.left.isDown || this.aKey.isDown) && d.x !== 1) {
-                    this.nextDirection = { x: -1, y: 0 };  // x=-1向左，y不变
-                }
-                // 按右键或D：如果蛇当前不是向左走，就改为向右
-                if ((this.cursors.right.isDown || this.dKey.isDown) && d.x !== -1) {
-                    this.nextDirection = { x: 1, y: 0 };   // x=1向右，y不变
-                }
-            }
-
-            moveSnake() {                            // 蛇移动一步（核心逻辑）
-                this.direction = { ...this.nextDirection };  // 将玩家输入的方向正式应用
-
-                // 计算新蛇头的位置（旧蛇头 + 方向）
-                const head = this.snake[0];          // 获取当前蛇头
-                const newHead = {
-                    x: head.x + this.direction.x,    // 新头x = 旧头x + 方向x
-                    y: head.y + this.direction.y,    // 新头y = 旧头y + 方向y
-                };
-
-                // 检查是否撞墙（头部超出网格边界）
-                if (
-                    newHead.x < 0 || newHead.x >= GRID_WIDTH ||   // 超出左右边界
-                    newHead.y < 0 || newHead.y >= GRID_HEIGHT     // 超出上下边界
-                ) {
-                    this.endGame();                  // 游戏结束
-                    return;                          // 停止移动
-                }
-
-                // 检查是否撞到自己（新头部和蛇身任何一格重叠）
-                for (let i = 0; i < this.snake.length; i++) {
-                    if (this.snake[i].x === newHead.x && this.snake[i].y === newHead.y) {
-                        this.endGame();              // 撞到自己，游戏结束
-                        return;
-                    }
-                }
-
-                // 在数组最前面插入新头部（蛇往前走了一步）
-                this.snake.unshift(newHead);
-
-                // 检查新头部是否碰到了食物
-                if (newHead.x === this.food.x && newHead.y === this.food.y) {
-                    this.score += 10;                // 加10分
-                    this.scoreText.setText('分数: ' + this.score);  // 更新分数显示
-                    this.food = this.spawnFood();    // 生成新的食物
-                    // 注意：这里不删尾巴 → 蛇变长了一格！
-                } else {
-                    this.snake.pop();                // 没吃到食物 → 删除尾巴（蛇长度不变）
-                }
-
-                this.draw();                         // 重新绘制整个画面
-            }
-
-            spawnFood() {                            // 随机生成食物位置
-                let pos;                             // 食物位置
-                let onSnake;                         // 是否在蛇身上
-                do {                                 // 循环：直到找到不在蛇身上的位置
-                    pos = {
-                        x: Phaser.Math.Between(0, GRID_WIDTH - 1),   // 随机x：0到24
-                        y: Phaser.Math.Between(0, GRID_HEIGHT - 1),  // 随机y：0到24
-                    };
-                    onSnake = this.snake.some(       // 检查这个位置是否和蛇重叠
-                        (seg) => seg.x === pos.x && seg.y === pos.y
-                    );
-                } while (onSnake);                   // 如果重叠就重新随机
-                return pos;                          // 返回合法位置
-            }
-
-            drawGrid() {                             // 绘制背景网格
-                const g = this.graphics;             // 取画笔
-                g.clear();                           // 清除之前画的所有东西
-
-                // 先画背景
-                g.fillStyle(COLORS.background, 1);   // 设置填充颜色（深蓝，完全不透明）
-                g.fillRect(0, 0, GRID_WIDTH * CELL_SIZE, GRID_HEIGHT * CELL_SIZE + 30);  // 填充整个矩形
-
-                // 再画网格线
-                g.lineStyle(1, COLORS.gridLine, 0.3);  // 线宽1px，颜色，30%透明度
-                for (let x = 0; x <= GRID_WIDTH; x++) {  // 画竖线
-                    g.moveTo(x * CELL_SIZE, 30);          // 起点：从顶部30px开始
-                    g.lineTo(x * CELL_SIZE, GRID_HEIGHT * CELL_SIZE + 30);  // 终点：画到底部
-                }
-                for (let y = 0; y <= GRID_HEIGHT; y++) {  // 画横线
-                    g.moveTo(0, y * CELL_SIZE + 30);      // 起点：从左边开始
-                    g.lineTo(GRID_WIDTH * CELL_SIZE, y * CELL_SIZE + 30);  // 终点：画到右边
-                }
-                g.strokePath();                      // 一次性画出所有线条
-            }
-
-            draw() {                                 // 绘制蛇和食物（每帧调用）
-                const g = this.graphics;
-                this.drawGrid();                     // 先画背景网格（相当于清屏）
-
-                // --- 画食物 ---
-                g.fillStyle(COLORS.food, 1);         // 设置红色
-                g.fillCircle(                        // 画实心圆
-                    this.food.x * CELL_SIZE + CELL_SIZE / 2,       // 圆心x（格子中心）
-                    this.food.y * CELL_SIZE + CELL_SIZE / 2 + 30,  // 圆心y（+30是留出顶部分数区域）
-                    CELL_SIZE / 2 - 1                // 半径（比格子略小）
-                );
-                // 画食物光晕（一个更大的半透明圆）
-                g.fillStyle(COLORS.foodGlow, 0.3);   // 浅红色，30%透明度
-                g.fillCircle(
-                    this.food.x * CELL_SIZE + CELL_SIZE / 2,
-                    this.food.y * CELL_SIZE + CELL_SIZE / 2 + 30,
-                    CELL_SIZE / 2 + 2                // 半径比食物大2px
-                );
-
-                // --- 画蛇（从尾巴到蛇头，这样蛇头在最上面） ---
-                for (let i = this.snake.length - 1; i >= 0; i--) {  // 倒序遍历：从尾到头
-                    const seg = this.snake[i];       // 当前蛇身格子
-                    const px = seg.x * CELL_SIZE;    // 格子的像素x坐标
-                    const py = seg.y * CELL_SIZE + 30;  // 格子的像素y坐标（+30留出顶部）
-
-                    if (i === 0) {                   // 第0个是蛇头
-                        g.fillStyle(COLORS.snakeHead, 1);  // 亮绿色
-                        g.fillRoundedRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2, 4);  // 圆角矩形
-                    } else {                         // 蛇身
-                        // 越靠近尾部颜色越深
-                        const ratio = i / this.snake.length;  // 位置比例：0=头部，1=尾部
-                        const r = Math.floor(0x00 + (0x00 - 0x00) * ratio);    // 红色分量
-                        const gv = Math.floor(0xcc + (0x99 - 0xcc) * ratio);   // 绿色分量（从浅到深）
-                        const b = Math.floor(0x66 + (0x44 - 0x66) * ratio);    // 蓝色分量（从浅到深）
-                        const color = (r << 16) | (gv << 8) | b;  // 将RGB三色合成一个颜色值
-
-                        g.fillStyle(color, 1);       // 设置计算出的颜色
-                        g.fillRoundedRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2, 3);  // 圆角矩形
-                    }
-                }
-            }
-
-            endGame() {                              // 游戏结束
-                this.isGameOver = true;              // 标记游戏结束
-                this.gameOverText.setVisible(true);  // 显示"游戏结束"文字
-                this.restartText.setVisible(true);   // 显示"按空格重新开始"文字
-
-                // 把蛇头画成红色（表示撞死了）
-                const head = this.snake[0];
-                this.graphics.fillStyle(0xff0000, 1);  // 纯红色
-                this.graphics.fillRoundedRect(
-                    head.x * CELL_SIZE + 1,
-                    head.y * CELL_SIZE + 1 + 30,
-                    CELL_SIZE - 2,
-                    CELL_SIZE - 2,
-                    4
-                );
-            }
-        }
-
-        // ==================== 启动游戏 ====================
-        const config = {                             // Phaser游戏配置对象
-            type: Phaser.AUTO,                       // 自动选择渲染方式（WebGL优先，不行就用Canvas）
-            width: GRID_WIDTH * CELL_SIZE,           // 画布宽度：25×20=500px
-            height: GRID_HEIGHT * CELL_SIZE + 30,    // 画布高度：500+30=530px（30px给分数栏）
-            parent: 'game-container',                // 把画布塞到id="game-container"的div里
-            backgroundColor: '#16213e',              // 画布背景色
-            scene: [SnakeScene],                     // 要加载的场景列表
-            scale: {                                 // 缩放设置
-                mode: Phaser.Scale.FIT,              // 自动缩放以适应屏幕
-                autoCenter: Phaser.Scale.CENTER_BOTH,  // 水平和垂直都居中
-            },
-        };
-
-        const game = new Phaser.Game(config);        // 用配置创建游戏实例，游戏开始！
-    </script>
+    <!-- 游戏脚本 -->
+    <script src="js/audio.js"></script>
+    <script src="js/game.js"></script>
 </body>
 </html>
